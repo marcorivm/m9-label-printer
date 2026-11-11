@@ -109,6 +109,12 @@ class Stream(unittest.TestCase):
         self.assertEqual(rows_seen, [BAND_ROWS, BAND_ROWS, 17])
         self.assertEqual(stream[pos:], b"\x0a\x0a\x0a\x1f\x01\x06")
 
+    def test_feed_command_comes_first(self):
+        img = canvas(noise(LABEL_W, 30, seed=5), offset=HEAD_W - LABEL_W)
+        plain = build(img)
+        self.assertEqual(build(img, feed="label"), bytes.fromhex("1F010700") + plain)
+        self.assertEqual(build(img, feed="sheet"), bytes.fromhex("1F0107DD") + plain)
+
     def test_golden_bytes(self):
         """Exactly the stream the jbigkit 2.2 build that printed real labels produces.
         Guards each platform's pbmtojbg build (CI compiles it from source)."""

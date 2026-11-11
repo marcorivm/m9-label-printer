@@ -19,6 +19,8 @@ def main(argv=None):
     p.add_argument("--nudge-mm", type=float, default=s["nudge_mm"],
                    help="move the label left (negative) in mm (default %(default)s)")
     p.add_argument("--density", choices=list(HEAT), default=s["density"])
+    p.add_argument("--feed", choices=["label", "sheet"], default=s["feed"],
+                   help="stop after the label (default) or feed a full A4 sheet")
     p.add_argument("--out", metavar="FILE.bin", help="write the print stream to a file instead of sending")
     p.add_argument("--test", action="store_true", help="check the Bluetooth link (prints nothing)")
     p.add_argument("--list", action="store_true", help="list paired Bluetooth devices")
@@ -37,7 +39,7 @@ def main(argv=None):
         if not a.file:
             from .gui import main as gui_main
             return gui_main()
-        stream, _, clamped = printing.prepare(a.file, a.width_mm, a.nudge_mm, a.density)
+        stream, _, clamped = printing.prepare(a.file, a.width_mm, a.nudge_mm, a.density, a.feed)
         if clamped:
             print("Note: the label is already flush with the right edge of the head; "
                   "a rightward nudge can't move it further. If the left edge clips, "
@@ -50,7 +52,7 @@ def main(argv=None):
         print(f"sending {len(stream)} bytes to {a.addr}…")
         printing.send(a.addr, stream)
         config.save({"addr": a.addr, "width_mm": a.width_mm, "nudge_mm": a.nudge_mm,
-                     "density": a.density})
+                     "density": a.density, "feed": a.feed})
         print("Sent.")
         return 0
     except (transport.TransportError, RuntimeError, OSError, ValueError) as e:

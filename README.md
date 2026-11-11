@@ -50,6 +50,15 @@ flush right and can only move left.
   rightward nudge can't help, and the app says so.
 - **Too light / too dark** → change **Darkness**.
 
+### Paper feed
+
+Left to itself the M9 treats every job as an A4 page and feeds a whole sheet —
+about one extra 4×6 label. **One label** (the default) sends the vendor's
+roll-paper command (`1F 01 07 00`) first, so the paper stops after the label.
+**Full A4 sheet** sends the sheet command (`1F 01 07 DD`); use it to print on
+A4 paper, or if the printer keeps the roll setting and your phone prints come
+out short.
+
 Settings are remembered between runs.
 
 ## Command line
@@ -57,7 +66,7 @@ Settings are remembered between runs.
 ```bash
 pip install .                 # from a clone; needs pbmtojbg on PATH (brew/apt install jbigkit)
 m9printer label.pdf           # print with the saved settings
-m9printer label.pdf --width-mm 99 --nudge-mm -2 --density thick
+m9printer label.pdf --width-mm 99 --nudge-mm -2 --density thick --feed sheet
 m9printer --list              # paired Bluetooth devices
 m9printer --test              # check the link, print nothing
 m9printer label.pdf --out job.bin   # write the print stream instead of sending

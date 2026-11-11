@@ -30,6 +30,13 @@ HEAT = {"low": 130, "normal": 160, "thick": 190}
 DENSITY = {k: _PREAMBLE + bytes([0x1F, 0xFD, 1, 8, v]) for k, v in HEAT.items()}
 
 
+# Paper length, sent before the settings. The vendor app sends 1F 01 07 00 for
+# roll paper (stop after the content) and 1F 01 07 DD for single sheets on its A3
+# models, and always 00 on the MHT-400/X-131 — but nothing on the M9, which then
+# feeds a whole A4 sheet per job (about one extra 4x6 label).
+FEED = {"label": bytes.fromhex("1F010700"), "sheet": bytes.fromhex("1F0107DD")}
+
+
 def _le16(n):
     return struct.pack("<H", n)
 
@@ -73,11 +80,15 @@ def jbig(bpl, rows, packed):
             return f.read()
 
 
-def build(img, density="normal"):
-    """1-bit PIL image (HEAD_W wide) -> the complete M9 print stream."""
+def build(img, density="normal", feed=None):
+    """1-bit PIL image (HEAD_W wide) -> the complete M9 print stream.
+
+    feed: "label" (stop after the content), "sheet" (a full A4 page), or None
+    to send no paper-length command, as the vendor app does for the M9.
+    """
     w, h = img.size
     bpl, packed = pack_1bpp(img)
-    out = bytearray(DENSITY[density])
+    out = bytearray(FEED[feed] if feed else b"") + DENSITY[density]
     for y0 in range(0, h, BAND_ROWS):
         rows = min(BAND_ROWS, h - y0)
         bie = jbig(bpl, rows, packed[y0 * bpl:(y0 + rows) * bpl])

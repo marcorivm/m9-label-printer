@@ -5,7 +5,8 @@ import sys
 
 from . import DEFAULT_ADDR
 
-DEFAULTS = {"addr": DEFAULT_ADDR, "width_mm": 101.6, "nudge_mm": 0.0, "density": "normal"}
+DEFAULTS = {"addr": DEFAULT_ADDR, "width_mm": 101.6, "nudge_mm": 0.0, "density": "normal",
+            "feed": "label"}
 
 
 def _dir():
