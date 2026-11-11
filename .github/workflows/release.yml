@@ -1,0 +1,121 @@
+name: Build and release
+
+# Every push runs the tests on all three platforms. Pushing a tag like v0.1.0
+# also builds the apps and publishes them as a GitHub Release.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  JBIGKIT_URL: https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/jbigkit-2.2.tar.gz
+  JBIGKIT_SHA256: 3302109c93b7befbffa3cfe8bceb4355f19dea0ee7dcb5f33710b1648bf6645c
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest       # Apple silicon
+            asset: M9-Label-Printer-macOS-arm64.zip
+          - os: windows-latest
+            asset: M9-Label-Printer-Windows-x64.exe
+          - os: ubuntu-22.04       # older glibc, so the binary runs on more distros
+            asset: M9-Label-Printer-Linux-x64.tar.gz
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Python dependencies
+        run: python -m pip install pillow pypdfium2 pyinstaller
+
+      - name: Fetch jbigkit source (checksum-pinned)
+        run: |
+          curl -fsSL -o jbigkit-2.2.tar.gz "$JBIGKIT_URL"
+          python -c "import hashlib,sys; h=hashlib.sha256(open('jbigkit-2.2.tar.gz','rb').read()).hexdigest(); sys.exit(0 if h=='$JBIGKIT_SHA256' else 'checksum mismatch: '+h)"
+          tar xzf jbigkit-2.2.tar.gz
+          mkdir -p m9printer/bin
+
+      - name: Build pbmtojbg (macOS, Linux)
+        if: runner.os != 'Windows'
+        run: |
+          cd jbigkit-2.2
+          cc -O2 -Ilibjbig pbmtools/pbmtojbg.c libjbig/jbig.c libjbig/jbig_ar.c -o ../m9printer/bin/pbmtojbg
+
+      - uses: ilammy/msvc-dev-cmd@v1.13.0
+        if: runner.os == 'Windows'
+
+      - name: Build pbmtojbg (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          cd jbigkit-2.2
+          cl /nologo /O2 /D_CRT_SECURE_NO_WARNINGS /Ilibjbig pbmtools\pbmtojbg.c libjbig\jbig.c libjbig\jbig_ar.c /Fe:..\m9printer\bin\pbmtojbg.exe
+
+      - name: macOS helpers (btsend2, blueutil)
+        if: runner.os == 'macOS'
+        run: |
+          swiftc -O -o m9printer/bin/btsend2 helpers/btsend2.swift
+          brew install blueutil
+          cp "$(brew --prefix blueutil)/bin/blueutil" m9printer/bin/
+
+      - name: Bluetooth socket support in this Python
+        run: python -c "import socket; print('AF_BLUETOOTH' , getattr(socket, 'AF_BLUETOOTH', 'missing (Linux uses the libc fallback)'))"
+
+      - name: Tests (includes the golden-bytes check of this platform's pbmtojbg)
+        run: |
+          python -c "import tkinter, m9printer.gui; print('Tk', tkinter.TkVersion)"
+          python -m unittest discover -s tests -v
+
+      - name: Build app
+        run: pyinstaller --noconfirm --clean m9printer.spec
+
+      - name: Package
+        run: |
+          mkdir -p out
+          case "${{ runner.os }}" in
+            macOS)   ditto -c -k --keepParent "dist/M9 Label Printer.app" "out/${{ matrix.asset }}" ;;
+            Windows) cp dist/m9-label-printer.exe "out/${{ matrix.asset }}" ;;
+            Linux)   chmod +x dist/m9-label-printer
+                     tar -czf "out/${{ matrix.asset }}" -C dist m9-label-printer ;;
+          esac
+          ls -la out
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.asset }}
+          path: out/${{ matrix.asset }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: jbigkit source (GPL corresponding source for the bundled pbmtojbg)
+        run: |
+          curl -fsSL -o out/jbigkit-2.2.tar.gz "$JBIGKIT_URL"
+          echo "$JBIGKIT_SHA256  out/jbigkit-2.2.tar.gz" | sha256sum -c
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* \
+            --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes

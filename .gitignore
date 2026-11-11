@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+build/
+dist/
+*.egg-info/
+out.bin
+
+# Helper binaries are built per platform (locally or in CI), never committed.
+m9printer/bin/
